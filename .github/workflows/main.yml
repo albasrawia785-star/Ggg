@@ -1,4 +1,4 @@
-Name: Build Android APK
+name: Build Android APK
 
 on:
   push:
@@ -69,9 +69,6 @@ jobs:
             sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
           fi
 
-      # -------------------------------------------------------------
-      # الخطوة الجديدة: تحويل التطبيق إلى وضع ملء الشاشة (Fullscreen)
-      # -------------------------------------------------------------
       - name: Enable Fullscreen Mode (Hide Status Bar)
         run: |
           STYLES_PATH="android/app/src/main/res/values/styles.xml"
