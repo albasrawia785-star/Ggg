@@ -15,7 +15,6 @@ jobs:
 
       - name: Pre-Clean Conflicting Configurations
         run: |
-          # حذف أي ملفات إعدادات قديمة مسبقاً لمنع خطأ الـ init نهائياً
           rm -rf capacitor.config.ts capacitor.config.json
 
       - name: Unzip Project Files
@@ -33,7 +32,6 @@ jobs:
 
       - name: Deep Clean Environment
         run: |
-          # تنظيف شامل للمجلدات والملفات المتعارضة حتى داخل المجلدات الفرعية
           rm -rf node_modules package-lock.json dist android
           find . -name "capacitor.config.ts" -delete
           find . -name "capacitor.config.json" -delete
@@ -56,7 +54,6 @@ jobs:
 
       - name: Initialize Capacitor Android
         run: |
-          # الآن ستتم التهيئة بنجاح وبشكل نظيف تماماً
           npx cap init "Saydali Pro POS" "com.saydalipro.pos" --web-dir=dist
           npx cap add android
           npx cap sync android
@@ -69,13 +66,28 @@ jobs:
             sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
           fi
 
-      - name: Enable Fullscreen Mode (Hide Status Bar)
+      # -------------------------------------------------------------
+      # التعديل الجديد: تفعيل الوضع الغامر الحقيقي (ملء الشاشة الكامل)
+      # -------------------------------------------------------------
+      - name: Enable True Immersive Fullscreen Mode
         run: |
+          # 1. تعديل ملف styles.xml لإخفاء الأشرطة الافتراضية
           STYLES_PATH="android/app/src/main/res/values/styles.xml"
           if [ -f "$STYLES_PATH" ]; then
-            echo "Modifying styles.xml to enable fullscreen..."
-            # حقن خاصية ملء الشاشة داخل ثيمات التطبيق في أندرويد
-            sed -i '/<\/style>/i \        <item name="android:windowFullscreen">true</item>\n        <item name="android:windowContentOverlay">@null</item>' $STYLES_PATH
+            echo "Modifying styles.xml..."
+            sed -i '/<\/style>/i \        <item name="android:windowFullscreen">true</item>\n        <item name="android:windowContentOverlay">@null</item>\n        <item name="android:windowActivityTransitions">true</item>' $STYLES_PATH
+          fi
+
+          # 2. تعديل ملف MainActivity.java لإخفاء شريط التنقل السفلي برمجياً (Immersive Mode)
+          MAIN_ACTIVITY_PATH=$(find android/app/src/main/java -name "MainActivity.java")
+          if [ -n "$MAIN_ACTIVITY_PATH" ]; then
+            echo "Modifying MainActivity.java at: $MAIN_ACTIVITY_PATH"
+            
+            # إضافة الـ imports المطلوبة للتحكم بالـ System UI
+            sed -i '/package /a import android.view.View;' $MAIN_ACTIVITY_PATH
+            
+            # إضافة كود إخفاء شريط التنقل العلوي والسفلي داخل onCreate
+            sed -i '/this.init(savedInstanceState, /i \        // تفعيل الوضع الغامر الحقيقي\n        getWindow().getDecorView().setSystemUiVisibility(\n            View.SYSTEM_UI_FLAG_LAYOUT_STABLE\n            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION\n            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN\n            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION\n            | View.SYSTEM_UI_FLAG_FULLSCREEN\n            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY\n        );' $MAIN_ACTIVITY_PATH
           fi
 
       - name: Update Kotlin & Gradle Versions for Java 21
