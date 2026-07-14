@@ -14,90 +14,77 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Pre-Clean Conflicting Configurations
-        run: |
-          rm -rf capacitor.config.ts capacitor.config.json
+        run: rm -rf capacitor.config.ts capacitor.config.json
 
       - name: Unzip Project Files
         run: |
           unzip "pos.zip--صيدلي-برو" -d temp_unzip || unzip *.zip -d temp_unzip || true
           TARGET_DIR=$(find temp_unzip -name "package.json" -exec dirname {} \;)
           if [ -n "$TARGET_DIR" ]; then
-            echo "Found project files in: $TARGET_DIR"
             cp -r $TARGET_DIR/* .
           else
-            echo "Error: package.json not found!"
             exit 1
           fi
           rm -rf temp_unzip
 
-      - name: Deep Clean Environment
-        run: |
-          rm -rf node_modules package-lock.json dist android
-          find . -name "capacitor.config.ts" -delete
-          find . -name "capacitor.config.json" -delete
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install Dependencies
+      - name: Build Web Application
         run: |
           npm install --force
+          npm run build
 
-      - name: Build Web Application
-        run: npm run build
-
-      - name: Install Capacitor CLI & Core
+      - name: Install Capacitor & Initialize
         run: |
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
-
-      - name: Initialize Capacitor Android
-        run: |
           npx cap init "Saydali Pro POS" "com.saydalipro.pos" --web-dir=dist
+
+      # -------------------------------------------------------------
+      # التعديل الجوهري: إنشاء ملف إعدادات يفرض ملء الشاشة
+      # -------------------------------------------------------------
+      - name: Configure Fullscreen in Capacitor
+        run: |
+          echo '{
+            "appId": "com.saydalipro.pos",
+            "appName": "Saydali Pro POS",
+            "webDir": "dist",
+            "plugins": {
+              "StatusBar": {
+                "overlaysWebView": true,
+                "visible": false
+              },
+              "NavigationBar": {
+                "visible": false
+              }
+            }
+          }' > capacitor.config.json
+
+      - name: Add Android Platform & Sync
+        run: |
           npx cap add android
           npx cap sync android
 
-      - name: Inject Camera Permissions into AndroidManifest
+      - name: Final Fullscreen Style Injection
         run: |
-          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST_PATH" ]; then
-            echo "Injecting Camera permissions..."
-            sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
-          fi
-
-      # -------------------------------------------------------------
-      # التعديل الجديد: تفعيل الوضع الغامر الحقيقي (ملء الشاشة الكامل)
-      # -------------------------------------------------------------
-      - name: Enable True Immersive Fullscreen Mode
-        run: |
-          # 1. تعديل ملف styles.xml لإخفاء الأشرطة الافتراضية
+          # تعديل ملف styles.xml للتأكد من أن الثيم يدعم ملء الشاشة
           STYLES_PATH="android/app/src/main/res/values/styles.xml"
           if [ -f "$STYLES_PATH" ]; then
-            echo "Modifying styles.xml..."
-            sed -i '/<\/style>/i \        <item name="android:windowFullscreen">true</item>\n        <item name="android:windowContentOverlay">@null</item>\n        <item name="android:windowActivityTransitions">true</item>' $STYLES_PATH
+            # استبدال الثيم ليصبح Fullscreen
+            sed -i 's/Theme.AppCompat.Light.NoActionBar/Theme.AppCompat.Light.NoActionBar.FullScreen/g' $STYLES_PATH
+            # إضافة السطر إذا لم يكن موجوداً
+            if ! grep -q "android:windowFullscreen" "$STYLES_PATH"; then
+               sed -i '/<\/style>/i \    <item name="android:windowFullscreen">true</item>' $STYLES_PATH
+            fi
           fi
 
-          # 2. تعديل ملف MainActivity.java لإخفاء شريط التنقل السفلي برمجياً (Immersive Mode)
-          MAIN_ACTIVITY_PATH=$(find android/app/src/main/java -name "MainActivity.java")
-          if [ -n "$MAIN_ACTIVITY_PATH" ]; then
-            echo "Modifying MainActivity.java at: $MAIN_ACTIVITY_PATH"
-            
-            # إضافة الـ imports المطلوبة للتحكم بالـ System UI
-            sed -i '/package /a import android.view.View;' $MAIN_ACTIVITY_PATH
-            
-            # إضافة كود إخفاء شريط التنقل العلوي والسفلي داخل onCreate
-            sed -i '/this.init(savedInstanceState, /i \        // تفعيل الوضع الغامر الحقيقي\n        getWindow().getDecorView().setSystemUiVisibility(\n            View.SYSTEM_UI_FLAG_LAYOUT_STABLE\n            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION\n            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN\n            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION\n            | View.SYSTEM_UI_FLAG_FULLSCREEN\n            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY\n        );' $MAIN_ACTIVITY_PATH
-          fi
+      - name: Inject Camera Permissions
+        run: |
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />' $MANIFEST_PATH
 
-      - name: Update Kotlin & Gradle Versions for Java 21
+      - name: Setup Build Environment
         run: |
           cd android
-          if [ -f "build.gradle" ]; then
-            sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/g' build.gradle
-            sed -i 's/kotlin_version = .*/kotlin_version = "1.9.24"/g' build.gradle
-          fi
-
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/g' build.gradle
+          
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -108,7 +95,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -Dorg.gradle.project.android.useAndroidX=true
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
