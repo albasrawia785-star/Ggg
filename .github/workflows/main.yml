@@ -38,9 +38,9 @@ jobs:
           npx cap init "Saydali Pro POS" "com.saydalipro.pos" --web-dir=dist
 
       # -------------------------------------------------------------
-      # التعديل الجوهري: إنشاء ملف إعدادات يفرض ملء الشاشة
+      # التعديل الرئيسي: تهيئة Capacitor لحماية شريط التنقل السفلي من التداخل
       # -------------------------------------------------------------
-      - name: Configure Fullscreen in Capacitor
+      - name: Configure Capacitor Settings
         run: |
           echo '{
             "appId": "com.saydalipro.pos",
@@ -48,10 +48,7 @@ jobs:
             "webDir": "dist",
             "plugins": {
               "StatusBar": {
-                "overlaysWebView": true,
-                "visible": false
-              },
-              "NavigationBar": {
+                "overlaysWebView": false,
                 "visible": false
               }
             }
@@ -62,17 +59,25 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Final Fullscreen Style Injection
+      # -------------------------------------------------------------
+      # تعديل تصميم الـ styles لمنع الأزرار من الصعود تحت شريط أندرويد
+      # -------------------------------------------------------------
+      - name: Fix Layout Overlap in styles.xml
         run: |
-          # تعديل ملف styles.xml للتأكد من أن الثيم يدعم ملء الشاشة
           STYLES_PATH="android/app/src/main/res/values/styles.xml"
           if [ -f "$STYLES_PATH" ]; then
-            # استبدال الثيم ليصبح Fullscreen
-            sed -i 's/Theme.AppCompat.Light.NoActionBar/Theme.AppCompat.Light.NoActionBar.FullScreen/g' $STYLES_PATH
-            # إضافة السطر إذا لم يكن موجوداً
+            echo "Applying Layout Fixes to styles.xml..."
+            # إزالة أي كود يفرض التداخل (شفافية شريط التنقل) ليعود الشريط لمكانه الطبيعي خلف التطبيق
+            sed -i '/<item name="android:navigationBarColor">/d' $STYLES_PATH
+            sed -i '/<item name="android:windowTranslucentNavigation">/d' $STYLES_PATH
+            
+            # التأكد من إخفاء شريط الحالة العلوي فقط دون التأثير على شريط التنقل السفلي
             if ! grep -q "android:windowFullscreen" "$STYLES_PATH"; then
                sed -i '/<\/style>/i \    <item name="android:windowFullscreen">true</item>' $STYLES_PATH
             fi
+            
+            # منع تداخل محتوى التطبيق مع شريط التنقل السفلي
+            sed -i '/<\/style>/i \    <item name="android:windowDrawsSystemBarBackgrounds">true</item>' $STYLES_PATH
           fi
 
       - name: Inject Camera Permissions
